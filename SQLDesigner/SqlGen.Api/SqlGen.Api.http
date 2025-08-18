@@ -1,0 +1,6 @@
+@SqlGen.Api_HostAddress = http://localhost:5053
+
+GET {{SqlGen.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
