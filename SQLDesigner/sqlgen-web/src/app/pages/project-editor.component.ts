@@ -1,7 +1,7 @@
-import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { FormArray, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ProjectsApi } from '../services/projects.api';
 import { ProjectUpsertDto, TableDto } from '../models';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -15,7 +15,7 @@ import { TableEditorComponent, buildEmptyTable } from '../widgets/table-editor.c
   standalone: true,
   selector: 'app-project-editor',
   imports: [
-    CommonModule, ReactiveFormsModule, RouterLink,
+    CommonModule, ReactiveFormsModule,
     MatFormFieldModule, MatInputModule, MatButtonModule, MatCardModule, MatIconModule,
     TableEditorComponent
   ],
@@ -51,7 +51,7 @@ import { TableEditorComponent, buildEmptyTable } from '../widgets/table-editor.c
     <ng-container formArrayName="tables">
       <app-table-editor
         *ngFor="let t of tables.controls; let i = index"
-        [group]="t as FormGroup"
+        [group]="t"
         (remove)="removeTable(i)">
       </app-table-editor>
     </ng-container>
@@ -80,7 +80,7 @@ export class ProjectEditorComponent implements OnInit {
   });
 
   isNew = signal(true);
-  tables = this.form.controls['tables'] as FormArray;
+  get tables() { return this.form.controls['tables'] as FormArray; }
 
   ngOnInit(): void {
     const idParam = this.route.snapshot.paramMap.get('id');
@@ -89,36 +89,21 @@ export class ProjectEditorComponent implements OnInit {
       this.id = Number(idParam);
       this.api.get(this.id).subscribe(dto => this.loadDto(dto));
     } else {
-      // pusty projekt z jedną tabelą na start
       this.addTable();
     }
   }
 
-  addTable() {
-    this.tables.push(buildEmptyTable(this.fb));
-  }
-
-  removeTable(i: number) {
-    this.tables.removeAt(i);
-  }
+  addTable() { this.tables.push(buildEmptyTable(this.fb)); }
+  removeTable(i: number) { this.tables.removeAt(i); }
 
   private toDto(): ProjectUpsertDto {
     const raw = this.form.getRawValue();
     const tables: TableDto[] = (raw.tables ?? []).map((t: any) => ({
-      schema: t.schema,
-      name: t.name,
-      primaryKeyName: t.primaryKeyName || null,
-      columns: t.columns,
-      foreignKeys: t.foreignKeys,
-      indexes: t.indexes,
-      checkConstraints: t.checkConstraints,
-      uniqueConstraints: t.uniqueConstraints
+      schema: t.schema, name: t.name, primaryKeyName: t.primaryKeyName || null,
+      columns: t.columns, foreignKeys: t.foreignKeys, indexes: t.indexes,
+      checkConstraints: t.checkConstraints, uniqueConstraints: t.uniqueConstraints
     }));
-    return {
-      name: raw.name!,
-      description: raw.description || null,
-      tables
-    };
+    return { name: raw.name!, description: raw.description || null, tables };
   }
 
   private loadDto(dto: ProjectUpsertDto) {
@@ -128,7 +113,6 @@ export class ProjectEditorComponent implements OnInit {
     for (const t of dto.tables) {
       const g = buildEmptyTable(this.fb);
       g.patchValue(t);
-      // upewnij się że istnieją tablice
       g.controls['columns'].setValue(t.columns ?? []);
       g.controls['foreignKeys'].setValue(t.foreignKeys ?? []);
       g.controls['indexes'].setValue(t.indexes ?? []);
@@ -141,19 +125,14 @@ export class ProjectEditorComponent implements OnInit {
   save() {
     const payload = this.toDto();
     if (this.isNew()) {
-      this.api.create(payload).subscribe(r => {
-        this.router.navigate(['/projects', r.id]);
-      });
-    } else if (this.id != null) {
-      this.api.update(this.id, payload).subscribe(() => {
-        // nic, zostajemy
-        alert('Zapisano.');
-      });
+      this.api.create(payload).subscribe(r => this.router.navigate(['/projects', r.id]));
+    } else {
+      this.api.update(this.id!, payload).subscribe(() => alert('Zapisano.'));
     }
   }
 
   generate() {
-    const proceed = () => {
+    const go = () => {
       if (this.id == null) return;
       this.api.generate(this.id).subscribe(blob => {
         const a = document.createElement('a');
@@ -164,19 +143,15 @@ export class ProjectEditorComponent implements OnInit {
         URL.revokeObjectURL(url);
       });
     };
-
     if (this.isNew()) {
-      // najpierw zapisz
       const payload = this.toDto();
       this.api.create(payload).subscribe(r => {
-        this.id = r.id;
-        this.isNew.set(false);
-        this.router.navigate(['/projects', r.id]).then(() => proceed());
+        this.id = r.id; this.isNew.set(false);
+        this.router.navigate(['/projects', r.id]).then(go);
       });
     } else {
-      // dla pewności zaktualizuj i generuj
       const payload = this.toDto();
-      this.api.update(this.id!, payload).subscribe(() => proceed());
+      this.api.update(this.id!, payload).subscribe(go);
     }
   }
 }
