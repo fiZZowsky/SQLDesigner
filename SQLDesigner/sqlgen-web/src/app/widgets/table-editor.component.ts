@@ -33,8 +33,8 @@ imports: [
     MatButtonModule, MatCheckboxModule, MatIconModule
   ],
   template: `
-  <mat-card class="table-card" [formGroup]="group">
-    <div class="table-header">
+  <mat-card class="table-card">
+    <div class="table-header" [formGroup]="group">
       <div class="row">
         <mat-form-field class="w-160">
           <mat-label>Schema</mat-label>
