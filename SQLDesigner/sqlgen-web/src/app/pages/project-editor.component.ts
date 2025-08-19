@@ -20,41 +20,43 @@ import { TableEditorComponent, buildEmptyTable } from '../widgets/table-editor.c
     TableEditorComponent
   ],
   template: `
-    <div class="header">
-      <h2>{{ isNew() ? 'Nowy projekt' : 'Edycja projektu' }}</h2>
-      <span class="spacer"></span>
-      <button mat-stroked-button (click)="save()">Zapisz</button>
-      <button mat-raised-button color="primary" (click)="generate()">Generuj SQL</button>
-    </div>
-
-    <mat-card>
-      <div class="row">
-        <mat-form-field class="w-300">
-          <mat-label>Nazwa projektu</mat-label>
-          <input matInput [formControl]="form.controls['name']" required>
-        </mat-form-field>
-
-        <mat-form-field class="grow">
-          <mat-label>Opis</mat-label>
-          <input matInput [formControl]="form.controls['description']">
-        </mat-form-field>
+    <form [formGroup]="form">
+      <div class="header">
+        <h2>{{ isNew() ? 'Nowy projekt' : 'Edycja projektu' }}</h2>
+        <span class="spacer"></span>
+        <button mat-stroked-button type="button" (click)="save()">Zapisz</button>
+        <button mat-raised-button color="primary" type="button" (click)="generate()">Generuj SQL</button>
       </div>
-    </mat-card>
 
-    <div class="tables-header">
-      <h3>Tabele</h3>
-      <button mat-stroked-button color="primary" (click)="addTable()">
-        <mat-icon>add</mat-icon> Dodaj tabelę
-      </button>
-    </div>
+      <mat-card>
+        <div class="row">
+          <mat-form-field class="w-300">
+            <mat-label>Nazwa projektu</mat-label>
+            <input matInput [formControl]="form.controls['name']" required>
+          </mat-form-field>
 
-    <ng-container formArrayName="tables">
-      <app-table-editor
-        *ngFor="let t of tables.controls; let i = index"
-        [group]="t"
-        (remove)="removeTable(i)">
-      </app-table-editor>
-    </ng-container>
+          <mat-form-field class="grow">
+            <mat-label>Opis</mat-label>
+            <input matInput [formControl]="form.controls['description']">
+          </mat-form-field>
+        </div>
+      </mat-card>
+
+      <div class="tables-header">
+        <h3>Tabele</h3>
+        <button mat-stroked-button color="primary" type="button" (click)="addTable()">
+          <mat-icon>add</mat-icon> Dodaj tabelę
+        </button>
+      </div>
+
+      <ng-container formArrayName="tables">
+        <app-table-editor
+          *ngFor="let t of tables.controls; let i = index"
+          [group]="t"
+          (remove)="removeTable(i)">
+        </app-table-editor>
+      </ng-container>
+    </form>
   `,
   styles: [`
     .header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
