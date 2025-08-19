@@ -101,8 +101,13 @@ public class ProjectsController : ControllerBase
 
             var replacement = dto.ToEntity();
             replacement.Id = id;
+            // we want to preserve the original project id, which is an
+            // identity column in SQL Server. Inserting an entity with an
+            // explicit id requires temporarily enabling IDENTITY_INSERT.
+            await _db.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT dbo.Projects ON");
             _db.Projects.Add(replacement);
             await _db.SaveChangesAsync();
+            await _db.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT dbo.Projects OFF");
 
             await tx.CommitAsync();
             return NoContent();
