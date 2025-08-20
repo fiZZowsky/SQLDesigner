@@ -280,11 +280,11 @@ export class TableEditorComponent {
   @Input({ required: true }) group!: any;
   @Output() remove = new EventEmitter<void>();
 
-  dataTypes = ['int','bigint','smallint','tinyint','bit',
-    'nvarchar','varchar','nchar','char','varbinary',
-    'decimal','numeric',
-    'datetime2','datetime','smalldatetime','date','time','datetimeoffset',
-    'uniqueidentifier','float','real','money','smallmoney','xml'];
+  dataTypes = ['int','bigint','bit',
+    'nvarchar','varchar',
+    'decimal','numeric','float',
+    'date','time','datetime','datetime2','datetimeoffset',
+    'uniqueidentifier'];
 
   get columns(): any[] { return this.group.controls['columns'].value || []; }
   set columns(v: any[]) { this.group.controls['columns'].setValue(v); this.group.markAsDirty(); }
@@ -327,6 +327,6 @@ export class TableEditorComponent {
   addFkColumn(i: number) { const a=[...this.foreignKeys]; a[i]={...a[i],columns:[...a[i].columns,{columnName:'',refColumnName:''}]}; this.foreignKeys = a; }
   removeFkColumn(i: number, ci: number) { const a=[...this.foreignKeys]; const cols=[...a[i].columns]; cols.splice(ci,1); a[i]={...a[i],columns:cols}; this.foreignKeys = a; }
 
-  hasLength(dt: string) { return ['varchar','nvarchar','char','nchar','varbinary'].includes((dt||'').toLowerCase()); }
+  hasLength(dt: string) { return ['varchar','nvarchar'].includes((dt||'').toLowerCase()); }
   hasPrecScale(dt: string) { return ['decimal','numeric'].includes((dt||'').toLowerCase()); }
 }

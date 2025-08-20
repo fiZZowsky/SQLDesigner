@@ -70,16 +70,12 @@ interface FkLink {
     </mat-card>
 
     <div class="graphic-layout">
-      <div class="toolbar">
-        <button mat-button (click)="selectedTool='select'" [class.active]="selectedTool==='select'">
-          <mat-icon>mouse</mat-icon>
-        </button>
-        <button mat-button (click)="selectedTool='table'" [class.active]="selectedTool==='table'">
-          <mat-icon>table_chart</mat-icon>
-        </button>
-        <button mat-button (click)="selectedTool='fk'" [class.active]="selectedTool==='fk'">
-          <mat-icon>share</mat-icon>
-        </button>
+      <div class="table-list">
+        <h3>Tables</h3>
+        <ul>
+          <li *ngFor="let t of tables" (click)="selectTable(t, $event)">{{ t.name }}</li>
+        </ul>
+        <button mat-stroked-button (click)="addTable()">Add table</button>
       </div>
 
 <div class="canvas" #canvas (click)="canvasClick($event)">
@@ -105,20 +101,22 @@ interface FkLink {
         </div>
       </div>
 
-      <div class="props" *ngIf="selected">
-        <h3>Właściwości tabeli</h3>
-        <label>Nazwa:
-          <input [(ngModel)]="selected.name">
-        </label>
-      </div>
-      <div class="props" *ngIf="selectedColumn && !selected">
-        <h3>Właściwości kolumny</h3>
-        <label>Nazwa:
-          <input [(ngModel)]="selectedColumn.column.name">
-        </label>
-        <label>Typ:
-          <input [(ngModel)]="selectedColumn.column.type">
-        </label>
+      <div class="props" *ngIf="selected || selectedColumn">
+        <ng-container *ngIf="selected">
+          <h3>Właściwości tabeli</h3>
+          <label>Nazwa:
+            <input [(ngModel)]="selected.name">
+          </label>
+        </ng-container>
+        <ng-container *ngIf="selectedColumn && !selected">
+          <h3>Właściwości kolumny</h3>
+          <label>Nazwa:
+            <input [(ngModel)]="selectedColumn.column.name">
+          </label>
+          <label>Typ:
+            <input [(ngModel)]="selectedColumn.column.type">
+          </label>
+        </ng-container>
       </div>
     </div>
   `,
@@ -129,8 +127,10 @@ interface FkLink {
     .w-300 { width:300px; }
     .grow { flex:1 1 auto; min-width: 240px; }
     .graphic-layout { display:flex; height:600px; margin-top:16px; }
-    .toolbar { width:60px; border-right:1px solid #ccc; display:flex; flex-direction:column; }
-    .toolbar button.active { background:#ddd; }
+.table-list { width:200px; border-right:1px solid #ccc; padding:8px; }
+    .table-list ul { list-style:none; padding:0; margin:0 0 8px 0; }
+    .table-list li { cursor:pointer; padding:4px 0; }
+    .table-list li:hover { background:#eee; }
     .canvas { flex:1; position:relative; user-select:none; background-size:20px 20px; background-image:linear-gradient(to right, #eee 1px, transparent 1px), linear-gradient(to bottom, #eee 1px, transparent 1px); }
     .table { position:absolute; border:1px solid #555; background:#fff; padding:4px; cursor:move; user-select:none; }
     .table-header { font-weight:bold; }
@@ -153,10 +153,8 @@ export class ProjectGraphicEditorComponent implements OnInit {
   tables: GTable[] = [];
   fks: FkLink[] = [];
   private tableId = 1;
-  selectedTool: 'select' | 'table' | 'fk' = 'select';
   selected: GTable | null = null;
   selectedColumn: { table: GTable; column: GColumn } | null = null;
-  fkStart: { t: number; c: number } | null = null;
   dragging: GTable | null = null;
   dragOffsetX = 0;
   dragOffsetY = 0;
@@ -175,16 +173,13 @@ export class ProjectGraphicEditorComponent implements OnInit {
   }
 
   canvasClick(e: MouseEvent) {
-    if (this.selectedTool === 'table') {
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      this.addTableAt(x, y);
-      this.selectedTool = 'select';
-    } else {
-      this.selected = null;
-      this.selectedColumn = null;
-    }
+    this.selected = null;
+    this.selectedColumn = null;
+  }
+
+  addTable() {
+    const offset = this.tables.length * 40;
+    this.addTableAt(100 + offset, 100 + offset);
   }
 
   addTableAt(x: number, y: number) {
@@ -214,31 +209,18 @@ export class ProjectGraphicEditorComponent implements OnInit {
 
   selectTable(t: GTable, e: MouseEvent) {
     e.stopPropagation();
-    if (this.selectedTool === 'fk') return;
     this.selected = t;
     this.selectedColumn = null;
   }
 
   selectColumn(t: GTable, c: GColumn, e: MouseEvent) {
     e.stopPropagation();
-    const idx = t.columns.indexOf(c);
-    if (this.selectedTool === 'fk') {
-      const pos = { t: t.id, c: idx };
-      if (!this.fkStart) {
-        this.fkStart = pos;
-      } else {
-        this.fks.push({ from: this.fkStart, to: pos });
-        this.fkStart = null;
-      }
-    } else {
-      this.selectedColumn = { table: t, column: c };
-      this.selected = null;
-    }
+    this.selectedColumn = { table: t, column: c };
+    this.selected = null;
   }
 
   removeFk(i: number, e: MouseEvent) {
     e.stopPropagation();
-    if (this.selectedTool !== 'fk') return;
     this.fks.splice(i, 1);
   }
 
