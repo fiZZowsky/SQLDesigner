@@ -215,8 +215,19 @@ export class ProjectGraphicEditorComponent implements OnInit {
 
   selectColumn(t: GTable, c: GColumn, e: MouseEvent) {
     e.stopPropagation();
-    this.selectedColumn = { table: t, column: c };
-    this.selected = null;
+    if (this.selectedColumn) {
+      const fromTable = this.selectedColumn.table;
+      const fromIdx = fromTable.columns.indexOf(this.selectedColumn.column);
+      const toIdx = t.columns.indexOf(c);
+      if (fromIdx >= 0 && toIdx >= 0) {
+        this.fks.push({ from: { t: fromTable.id, c: fromIdx }, to: { t: t.id, c: toIdx } });
+      }
+      this.selectedColumn = null;
+      this.selected = null;
+    } else {
+      this.selectedColumn = { table: t, column: c };
+      this.selected = null;
+    }
   }
 
   removeFk(i: number, e: MouseEvent) {
