@@ -1,4 +1,11 @@
-import { Component, OnInit, inject } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  inject,
+  ViewChild,
+  ElementRef,
+  HostListener,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -10,12 +17,22 @@ import { MatCardModule } from '@angular/material/card';
 import { ProjectsApi } from '../services/projects.api';
 import { ProjectUpsertDto, TableDto } from '../models';
 
+interface GColumn {
+  name: string;
+  type: string;
+}
+
 interface GTable {
   id: number;
   x: number;
   y: number;
   name: string;
-  columns: string[];
+  columns: GColumn[];
+}
+
+interface FkLink {
+  from: { t: number; c: number };
+  to: { t: number; c: number };
 }
 
 @Component({
@@ -65,25 +82,41 @@ interface GTable {
         </button>
       </div>
 
-      <div class="canvas" (click)="canvasClick($event)">
+<div class="canvas" #canvas (click)="canvasClick($event)">
         <svg class="relations">
           <line *ngFor="let fk of fks"
-            [attr.x1]="getCenter(fk.from).x" [attr.y1]="getCenter(fk.from).y"
-            [attr.x2]="getCenter(fk.to).x" [attr.y2]="getCenter(fk.to).y"></line>
+            [attr.x1]="getColCenter(fk.from).x" [attr.y1]="getColCenter(fk.from).y"
+            [attr.x2]="getColCenter(fk.to).x" [attr.y2]="getColCenter(fk.to).y"></line>
         </svg>
         <div class="table" *ngFor="let t of tables"
+             [attr.data-id]="t.id"
              [style.left.px]="t.x" [style.top.px]="t.y"
-             (click)="selectTable(t, $event)">
+             (click)="selectTable(t, $event)"
+             (mousedown)="startDrag(t, $event)">
           <div class="table-header">{{ t.name }}</div>
-          <div class="column" *ngFor="let c of t.columns">{{ c }}</div>
+          <div class="column" *ngFor="let c of t.columns; let i = index"
+               (click)="selectColumn(t, c, $event)"
+               (mousedown)="$event.stopPropagation()"
+               [class.selected]="selectedColumn?.table===t && selectedColumn?.column===c">
+            {{ c.name }}: {{ c.type }}
+          </div>
           <button mat-mini-button (click)="addColumn(t, $event)"><mat-icon>add</mat-icon></button>
         </div>
       </div>
 
       <div class="props" *ngIf="selected">
-        <h3>Właściwości</h3>
+        <h3>Właściwości tabeli</h3>
         <label>Nazwa:
           <input [(ngModel)]="selected.name">
+        </label>
+      </div>
+      <div class="props" *ngIf="selectedColumn && !selected">
+        <h3>Właściwości kolumny</h3>
+        <label>Nazwa:
+          <input [(ngModel)]="selectedColumn.column.name">
+        </label>
+        <label>Typ:
+          <input [(ngModel)]="selectedColumn.column.type">
         </label>
       </div>
     </div>
@@ -97,10 +130,11 @@ interface GTable {
     .graphic-layout { display:flex; height:600px; margin-top:16px; }
     .toolbar { width:60px; border-right:1px solid #ccc; display:flex; flex-direction:column; }
     .toolbar button.active { background:#ddd; }
-    .canvas { flex:1; position:relative; }
-    .table { position:absolute; border:1px solid #555; background:#fff; padding:4px; cursor:pointer; }
+    .canvas { flex:1; position:relative; user-select:none; background-size:20px 20px; background-image:linear-gradient(to right, #eee 1px, transparent 1px), linear-gradient(to bottom, #eee 1px, transparent 1px); }
+    .table { position:absolute; border:1px solid #555; background:#fff; padding:4px; cursor:move; user-select:none; }
     .table-header { font-weight:bold; }
     .table button { margin-top:4px; }
+    .column.selected { background:#def; }
     .props { width:200px; border-left:1px solid #ccc; padding:8px; }
     .relations { position:absolute; width:100%; height:100%; pointer-events:none; }
   `]
@@ -115,11 +149,18 @@ export class ProjectGraphicEditorComponent implements OnInit {
   description = '';
 
   tables: GTable[] = [];
-  fks: { from: number; to: number }[] = [];
+  fks: FkLink[] = [];
   private tableId = 1;
   selectedTool: 'select' | 'table' | 'fk' = 'select';
   selected: GTable | null = null;
-  fkStart: GTable | null = null;
+  selectedColumn: { table: GTable; column: GColumn } | null = null;
+  fkStart: { t: number; c: number } | null = null;
+  dragging: GTable | null = null;
+  dragOffsetX = 0;
+  dragOffsetY = 0;
+
+  canvasRect: DOMRect | null = null;
+  @ViewChild('canvas', { static: true }) canvas!: ElementRef<HTMLDivElement>;
 
   ngOnInit() {
     const idParam = this.route.snapshot.paramMap.get('id');
@@ -138,6 +179,9 @@ export class ProjectGraphicEditorComponent implements OnInit {
       const y = e.clientY - rect.top;
       this.addTableAt(x, y);
       this.selectedTool = 'select';
+    } else {
+      this.selected = null;
+      this.selectedColumn = null;
     }
   }
 
@@ -145,51 +189,105 @@ export class ProjectGraphicEditorComponent implements OnInit {
     this.tables.push({ id: this.tableId++, x, y, name: 'Tabela' + this.tableId, columns: [] });
   }
 
+  startDrag(t: GTable, e: MouseEvent) {
+    e.stopPropagation();
+    this.dragging = t;
+    this.dragOffsetX = e.offsetX;
+    this.dragOffsetY = e.offsetY;
+    const canvasEl = this.canvas?.nativeElement;
+    this.canvasRect = canvasEl.getBoundingClientRect();
+  }
+
+  @HostListener('window:mousemove', ['$event'])
+  onMouseMove(e: MouseEvent) {
+    if (!this.dragging || !this.canvasRect) return;
+    this.dragging.x = e.clientX - this.canvasRect.left - this.dragOffsetX;
+    this.dragging.y = e.clientY - this.canvasRect.top - this.dragOffsetY;
+  }
+
+  @HostListener('window:mouseup')
+  onMouseUp() {
+    this.dragging = null;
+  }
+
   selectTable(t: GTable, e: MouseEvent) {
     e.stopPropagation();
+    if (this.selectedTool === 'fk') return;
+    this.selected = t;
+    this.selectedColumn = null;
+  }
+
+  selectColumn(t: GTable, c: GColumn, e: MouseEvent) {
+    e.stopPropagation();
+    const idx = t.columns.indexOf(c);
     if (this.selectedTool === 'fk') {
+      const pos = { t: t.id, c: idx };
       if (!this.fkStart) {
-        this.fkStart = t;
-      } else if (this.fkStart !== t) {
-        this.fks.push({ from: this.fkStart.id, to: t.id });
+        this.fkStart = pos;
+      } else {
+        this.fks.push({ from: this.fkStart, to: pos });
         this.fkStart = null;
       }
     } else {
-      this.selected = t;
+      this.selectedColumn = { table: t, column: c };
+      this.selected = null;
     }
   }
 
   addColumn(t: GTable, e: MouseEvent) {
     e.stopPropagation();
-    t.columns.push('kolumna' + (t.columns.length + 1));
+    t.columns.push({ name: 'kolumna' + (t.columns.length + 1), type: 'int' });
   }
 
-  getCenter(id: number) {
-    const t = this.tables.find(x => x.id === id)!;
-    return { x: t.x + 60, y: t.y + 20 };
+  getColCenter(ref: { t: number; c: number }) {
+    const canvasEl = this.canvas.nativeElement;
+    const tableEl = canvasEl.querySelector(`.table[data-id='${ref.t}']`);
+    if (!tableEl) return { x: 0, y: 0 };
+    const cols = tableEl.querySelectorAll('.column');
+    const colEl = cols[ref.c] as HTMLElement | undefined;
+    if (!colEl) return { x: 0, y: 0 };
+    const canvasRect = canvasEl.getBoundingClientRect();
+    const rect = colEl.getBoundingClientRect();
+    return { x: rect.left - canvasRect.left + rect.width / 2, y: rect.top - canvasRect.top + rect.height / 2 };
   }
 
   private toDto(): ProjectUpsertDto {
-    const tables: TableDto[] = this.tables.map(t => ({
-      schema: '',
-      name: t.name,
-      primaryKeyName: null,
-      columns: t.columns.map(c => ({
-        name: c,
-        dataType: 'int',
-        isNullable: true,
-        isPrimaryKey: false,
-        isIdentity: false,
-        identitySeed: 1,
-        identityIncrement: 1,
-        defaultKind: 'None',
-        isUnique: false
-      })),
-      foreignKeys: [],
-      indexes: [],
-      checkConstraints: [],
-      uniqueConstraints: []
-    }));
+    const tables: TableDto[] = this.tables.map(t => {
+      const tableFks = this.fks
+        .filter(f => f.from.t === t.id)
+        .map(f => ({
+          name: null,
+          refSchema: '',
+          refTable: this.tables.find(tt => tt.id === f.to.t)?.name || '',
+          columns: [
+            {
+              columnName: t.columns[f.from.c].name,
+              refColumnName:
+                this.tables.find(tt => tt.id === f.to.t)?.columns[f.to.c].name || '',
+            },
+          ],
+        }));
+      return {
+        schema: '',
+        name: t.name,
+        primaryKeyName: null,
+        columns: t.columns.map(c => ({
+          name: c.name,
+          dataType: c.type,
+          isNullable: true,
+          isPrimaryKey: false,
+          isIdentity: false,
+          identitySeed: 1,
+          identityIncrement: 1,
+          defaultKind: 'None',
+          isUnique: false,
+        })),
+        foreignKeys: tableFks,
+        indexes: [],
+        checkConstraints: [],
+        uniqueConstraints: [],
+      };
+    });
     return { name: this.name || 'Projekt', description: this.description || null, tables };
   }
 
@@ -201,8 +299,23 @@ export class ProjectGraphicEditorComponent implements OnInit {
       x: 100,
       y: 100,
       name: t.name,
-      columns: t.columns.map(c => c.name)
+      columns: t.columns.map(c => ({ name: c.name, type: c.dataType })),
     }));
+    this.fks = [];
+    dto.tables.forEach((t, idx) => {
+      const fromTable = this.tables[idx];
+      t.foreignKeys.forEach(fk => {
+        const toTable = this.tables.find(tt => tt.name === fk.refTable);
+        if (!toTable) return;
+        fk.columns.forEach(col => {
+          const fromIdx = fromTable.columns.findIndex(c => c.name === col.columnName);
+          const toIdx = toTable.columns.findIndex(c => c.name === col.refColumnName);
+          if (fromIdx >= 0 && toIdx >= 0) {
+            this.fks.push({ from: { t: fromTable.id, c: fromIdx }, to: { t: toTable.id, c: toIdx } });
+          }
+        });
+      });
+    });
   }
 
   save() {
