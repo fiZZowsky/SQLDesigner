@@ -84,9 +84,10 @@ interface FkLink {
 
 <div class="canvas" #canvas (click)="canvasClick($event)">
         <svg class="relations">
-          <line *ngFor="let fk of fks"
+          <line *ngFor="let fk of fks; let i = index"
             [attr.x1]="getColCenter(fk.from).x" [attr.y1]="getColCenter(fk.from).y"
-            [attr.x2]="getColCenter(fk.to).x" [attr.y2]="getColCenter(fk.to).y"></line>
+            [attr.x2]="getColCenter(fk.to).x" [attr.y2]="getColCenter(fk.to).y"
+            class="fk-line" (click)="removeFk(i, $event)"></line>
         </svg>
         <div class="table" *ngFor="let t of tables"
              [attr.data-id]="t.id"
@@ -137,6 +138,7 @@ interface FkLink {
     .column.selected { background:#def; }
     .props { width:200px; border-left:1px solid #ccc; padding:8px; }
     .relations { position:absolute; width:100%; height:100%; pointer-events:none; }
+    .fk-line { stroke:#555; stroke-width:2; pointer-events:stroke; }
   `]
 })
 export class ProjectGraphicEditorComponent implements OnInit {
@@ -232,6 +234,12 @@ export class ProjectGraphicEditorComponent implements OnInit {
       this.selectedColumn = { table: t, column: c };
       this.selected = null;
     }
+  }
+
+  removeFk(i: number, e: MouseEvent) {
+    e.stopPropagation();
+    if (this.selectedTool !== 'fk') return;
+    this.fks.splice(i, 1);
   }
 
   addColumn(t: GTable, e: MouseEvent) {
