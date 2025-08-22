@@ -33,6 +33,7 @@ interface GTable {
 interface FkLink {
   from: { t: number; c: number };
   to: { t: number; c: number };
+  type: string;
 }
 
 @Component({
@@ -83,7 +84,7 @@ interface FkLink {
           <line *ngFor="let fk of fks; let i = index"
             [attr.x1]="getColCenter(fk.from).x" [attr.y1]="getColCenter(fk.from).y"
             [attr.x2]="getColCenter(fk.to).x" [attr.y2]="getColCenter(fk.to).y"
-            class="fk-line" (click)="removeFk(i, $event)"></line>
+            class="fk-line" [class.selected]="selectedFkIndex===i" (click)="selectFk(i, $event)"></line>
         </svg>
         <div class="table" *ngFor="let t of tables"
              [attr.data-id]="t.id"
@@ -101,14 +102,15 @@ interface FkLink {
         </div>
       </div>
 
-      <div class="props" *ngIf="selected || selectedColumn">
+        <div class="props" *ngIf="selected || selectedColumn || selectedFkIndex!==null">
         <ng-container *ngIf="selected">
           <h3>Właściwości tabeli</h3>
           <label>Nazwa:
             <input [(ngModel)]="selected.name">
           </label>
         </ng-container>
-        <ng-container *ngIf="selectedColumn && !selected">
+
+        <ng-container *ngIf="selectedColumn && !selected && selectedFkIndex===null">
           <h3>Właściwości kolumny</h3>
           <label>Nazwa:
             <input [(ngModel)]="selectedColumn.column.name">
@@ -116,6 +118,57 @@ interface FkLink {
           <label>Typ:
             <input [(ngModel)]="selectedColumn.column.type">
           </label>
+          <div *ngIf="!relationForm">
+            <button mat-stroked-button type="button" (click)="startAddFk()">Dodaj relację</button>
+          </div>
+          <div *ngIf="relationForm">
+            <label>Tabela docelowa:
+              <select [(ngModel)]="relationForm.toTableId" (ngModelChange)="relationForm.toColumnIdx=null">
+                <option [ngValue]="null">-- wybierz --</option>
+                <option *ngFor="let t of tables" [ngValue]="t.id" [disabled]="t===selectedColumn.table">{{t.name}}</option>
+              </select>
+            </label>
+            <label>Kolumna docelowa:
+              <select [(ngModel)]="relationForm.toColumnIdx">
+                <option [ngValue]="null">-- wybierz --</option>
+                <option *ngFor="let c of tables.find(tt=>tt.id===relationForm.toTableId)?.columns; let i=index" [ngValue]="i">{{c.name}}</option>
+              </select>
+            </label>
+            <label>Typ relacji:
+              <select [(ngModel)]="relationForm.type">
+                <option value="1:1">1 do 1</option>
+                <option value="1:N">1 do N</option>
+                <option value="N:1">N do 1</option>
+                <option value="N:N">N do N</option>
+              </select>
+            </label>
+            <button mat-raised-button color="primary" type="button" (click)="confirmAddFk()">Dodaj</button>
+            <button mat-button type="button" (click)="relationForm=null">Anuluj</button>
+          </div>
+        </ng-container>
+
+        <ng-container *ngIf="selectedFkIndex!==null && !selected && !selectedColumn">
+          <h3>Właściwości relacji</h3>
+          <div>Kolumna źródłowa: {{ tables.find(t=>t.id===fks[selectedFkIndex].from.t)?.name }}.{{ tables.find(t=>t.id===fks[selectedFkIndex].from.t)?.columns[fks[selectedFkIndex].from.c].name }}</div>
+          <label>Tabela docelowa:
+            <select [(ngModel)]="fks[selectedFkIndex].to.t" (ngModelChange)="onFkChange()">
+              <option *ngFor="let t of tables" [ngValue]="t.id">{{t.name}}</option>
+            </select>
+          </label>
+          <label>Kolumna docelowa:
+            <select [(ngModel)]="fks[selectedFkIndex].to.c" (ngModelChange)="onFkChange()">
+              <option *ngFor="let c of tables.find(tt=>tt.id===fks[selectedFkIndex].to.t)?.columns; let i=index" [ngValue]="i">{{c.name}}</option>
+            </select>
+          </label>
+          <label>Typ relacji:
+            <select [(ngModel)]="fks[selectedFkIndex].type">
+              <option value="1:1">1 do 1</option>
+              <option value="1:N">1 do N</option>
+              <option value="N:1">N do 1</option>
+              <option value="N:N">N do N</option>
+            </select>
+          </label>
+          <button mat-stroked-button color="warn" type="button" (click)="removeFk(selectedFkIndex)">Usuń relację</button>
         </ng-container>
       </div>
     </div>
@@ -139,6 +192,7 @@ interface FkLink {
     .props { width:200px; border-left:1px solid #ccc; padding:8px; }
     .relations { position:absolute; width:100%; height:100%; pointer-events:none; }
     .fk-line { stroke:#555; stroke-width:2; pointer-events:stroke; }
+    .fk-line.selected { stroke:#d00; }
   `]
 })
 export class ProjectGraphicEditorComponent implements OnInit {
@@ -155,6 +209,9 @@ export class ProjectGraphicEditorComponent implements OnInit {
   private tableId = 1;
   selected: GTable | null = null;
   selectedColumn: { table: GTable; column: GColumn } | null = null;
+  selectedFkIndex: number | null = null;
+  relationForm: { toTableId: number | null; toColumnIdx: number | null; type: string } | null = null;
+  originalFk: FkLink | null = null;
   dragging: GTable | null = null;
   dragOffsetX = 0;
   dragOffsetY = 0;
@@ -175,6 +232,8 @@ export class ProjectGraphicEditorComponent implements OnInit {
   canvasClick(e: MouseEvent) {
     this.selected = null;
     this.selectedColumn = null;
+    this.selectedFkIndex = null;
+    this.relationForm = null;
   }
 
   addTable() {
@@ -211,28 +270,59 @@ export class ProjectGraphicEditorComponent implements OnInit {
     e.stopPropagation();
     this.selected = t;
     this.selectedColumn = null;
+    this.selectedFkIndex = null;
+    this.relationForm = null;
   }
 
   selectColumn(t: GTable, c: GColumn, e: MouseEvent) {
     e.stopPropagation();
-    if (this.selectedColumn) {
-      const fromTable = this.selectedColumn.table;
-      const fromIdx = fromTable.columns.indexOf(this.selectedColumn.column);
-      const toIdx = t.columns.indexOf(c);
-      if (fromIdx >= 0 && toIdx >= 0) {
-        this.fks.push({ from: { t: fromTable.id, c: fromIdx }, to: { t: t.id, c: toIdx } });
-      }
-      this.selectedColumn = null;
-      this.selected = null;
-    } else {
-      this.selectedColumn = { table: t, column: c };
-      this.selected = null;
-    }
+    this.selectedColumn = { table: t, column: c };
+    this.selected = null;
+    this.selectedFkIndex = null;
+    this.relationForm = null;
   }
 
-  removeFk(i: number, e: MouseEvent) {
+  startAddFk() {
+    this.relationForm = { toTableId: null, toColumnIdx: null, type: '1:N' };
+  }
+
+  confirmAddFk() {
+    if (!this.selectedColumn || !this.relationForm) return;
+    const fromTable = this.selectedColumn.table.id;
+    const fromIdx = this.selectedColumn.table.columns.indexOf(this.selectedColumn.column);
+    const toTableId = this.relationForm.toTableId;
+    const toColumnIdx = this.relationForm.toColumnIdx;
+    if (toTableId === null || toColumnIdx === null) return;
+    const exists = this.fks.some(f => f.from.t === fromTable && f.from.c === fromIdx && f.to.t === toTableId && f.to.c === toColumnIdx);
+    if (!exists) {
+      this.fks.push({ from: { t: fromTable, c: fromIdx }, to: { t: toTableId, c: toColumnIdx }, type: this.relationForm.type });
+    }
+    this.relationForm = null;
+  }
+
+  selectFk(i: number, e: MouseEvent) {
     e.stopPropagation();
+    this.selectedFkIndex = i;
+    this.selected = null;
+    this.selectedColumn = null;
+    this.relationForm = null;
+    this.originalFk = JSON.parse(JSON.stringify(this.fks[i]));
+  }
+
+  removeFk(i: number) {
     this.fks.splice(i, 1);
+    this.selectedFkIndex = null;
+  }
+
+  onFkChange() {
+    if (this.selectedFkIndex === null) return;
+    const fk = this.fks[this.selectedFkIndex];
+    const duplicate = this.fks.some((f, idx) => idx !== this.selectedFkIndex && f.from.t === fk.from.t && f.from.c === fk.from.c && f.to.t === fk.to.t && f.to.c === fk.to.c);
+    if (duplicate && this.originalFk) {
+      Object.assign(fk.to, this.originalFk.to);
+    } else if (this.originalFk) {
+      this.originalFk = JSON.parse(JSON.stringify(fk));
+    }
   }
 
   addColumn(t: GTable, e: MouseEvent) {
@@ -312,7 +402,7 @@ export class ProjectGraphicEditorComponent implements OnInit {
           const fromIdx = fromTable.columns.findIndex(c => c.name === col.columnName);
           const toIdx = toTable.columns.findIndex(c => c.name === col.refColumnName);
           if (fromIdx >= 0 && toIdx >= 0) {
-            this.fks.push({ from: { t: fromTable.id, c: fromIdx }, to: { t: toTable.id, c: toIdx } });
+            this.fks.push({ from: { t: fromTable.id, c: fromIdx }, to: { t: toTable.id, c: toIdx }, type: '1:N' });
           }
         });
       });
