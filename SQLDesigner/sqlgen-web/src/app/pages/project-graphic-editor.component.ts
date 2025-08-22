@@ -131,7 +131,7 @@ interface FkLink {
             <label>Kolumna docelowa:
               <select [(ngModel)]="relationForm.toColumnIdx">
                 <option [ngValue]="null">-- wybierz --</option>
-                <option *ngFor="let c of tables.find(tt=>tt.id===relationForm.toTableId)?.columns; let i=index" [ngValue]="i">{{c.name}}</option>
+                <option *ngFor="let c of getTableById(relationForm.toTableId)?.columns; let i=index" [ngValue]="i">{{c.name}}</option>
               </select>
             </label>
             <label>Typ relacji:
@@ -149,7 +149,7 @@ interface FkLink {
 
         <ng-container *ngIf="selectedFkIndex!==null && !selected && !selectedColumn">
           <h3>Właściwości relacji</h3>
-          <div>Kolumna źródłowa: {{ tables.find(t=>t.id===fks[selectedFkIndex].from.t)?.name }}.{{ tables.find(t=>t.id===fks[selectedFkIndex].from.t)?.columns[fks[selectedFkIndex].from.c].name }}</div>
+          <div>Kolumna źródłowa: {{ getTableById(fks[selectedFkIndex].from.t)?.name }}.{{ getColumnName(fks[selectedFkIndex].from) }}</div>
           <label>Tabela docelowa:
             <select [(ngModel)]="fks[selectedFkIndex].to.t" (ngModelChange)="onFkChange()">
               <option *ngFor="let t of tables" [ngValue]="t.id">{{t.name}}</option>
@@ -157,7 +157,7 @@ interface FkLink {
           </label>
           <label>Kolumna docelowa:
             <select [(ngModel)]="fks[selectedFkIndex].to.c" (ngModelChange)="onFkChange()">
-              <option *ngFor="let c of tables.find(tt=>tt.id===fks[selectedFkIndex].to.t)?.columns; let i=index" [ngValue]="i">{{c.name}}</option>
+              <option *ngFor="let c of getTableById(fks[selectedFkIndex].to.t)?.columns; let i=index" [ngValue]="i">{{c.name}}</option>
             </select>
           </label>
           <label>Typ relacji:
@@ -328,6 +328,14 @@ export class ProjectGraphicEditorComponent implements OnInit {
   addColumn(t: GTable, e: MouseEvent) {
     e.stopPropagation();
     t.columns.push({ name: 'kolumna' + (t.columns.length + 1), type: 'int' });
+  }
+
+getTableById(id: number | null | undefined) {
+    return this.tables.find(tt => tt.id === id);
+  }
+
+  getColumnName(ref: { t: number; c: number }) {
+    return this.getTableById(ref.t)?.columns[ref.c]?.name;
   }
 
   getColCenter(ref: { t: number; c: number }) {
